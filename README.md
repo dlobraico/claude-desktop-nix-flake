@@ -1,6 +1,6 @@
 # Claude Desktop Nix Flake (Official Linux Beta)
 
-[![Update Claude Desktop](https://github.com/poeck/claude-desktop-nix-flake/actions/workflows/update.yml/badge.svg)](https://github.com/poeck/claude-desktop-nix-flake/actions/workflows/update.yml)
+[![Update Claude Desktop](https://github.com/dlobraico/claude-desktop-nix-flake/actions/workflows/update.yml/badge.svg)](https://github.com/dlobraico/claude-desktop-nix-flake/actions/workflows/update.yml)
 
 Nix flake for Anthropic's official Claude Desktop Linux beta package.
 
