@@ -60,11 +60,11 @@ let
   sources = {
     x86_64-linux = {
       debArch = "amd64";
-      hash = "sha256-Vvpd4FPgpo3HWDZ3hXvtz0IZsZ2QIBQA4CN7fXTVEvE=";
+      hash = "sha256-K8bw1BCbtDswdpbhEo31P785PvmPlHp4aZSGQkUCRdc=";
     };
     aarch64-linux = {
       debArch = "arm64";
-      hash = "sha256-OMZaEibczHWmskGLnUwGT0+dxTMfiWCK7dVU2H1Sm6M=";
+      hash = "sha256-woEP1oskEPgyboCkVXPS8+e81RqvgQ2a6S08CXih1VM=";
     };
   };
 
@@ -133,7 +133,7 @@ let
 in
 stdenv.mkDerivation (finalAttrs: {
   pname = "claude-desktop";
-  version = "1.18286.2";
+  version = "1.26832.0";
 
   src = fetchurl {
     url = "https://downloads.claude.ai/claude-desktop/apt/stable/pool/main/c/claude-desktop/claude-desktop_${finalAttrs.version}_${source.debArch}.deb";
@@ -169,19 +169,38 @@ stdenv.mkDerivation (finalAttrs: {
     cp -a usr/lib/claude-desktop "$out/lib/"
     cp -a usr/share/applications usr/share/icons usr/share/doc "$out/share/"
 
-    substituteInPlace "$out/share/applications/claude-desktop.desktop" \
+    # The entry's basename tracks package.json's desktopName, which changed in
+    # 1.26832.0 (claude-desktop.desktop -> com.anthropic.Claude.desktop), so
+    # find it rather than hardcoding a name upstream is free to change again.
+    desktopEntries=("$out"/share/applications/*.desktop)
+    if [ "''${#desktopEntries[@]}" -ne 1 ]; then
+      echo "expected exactly one desktop entry, found ''${#desktopEntries[@]}" >&2
+      exit 1
+    fi
+    substituteInPlace "''${desktopEntries[0]}" \
       --replace-fail "Exec=claude-desktop" "Exec=$out/bin/claude-desktop"
 
     asarRoot="$(mktemp -d)"
     asar extract "$out/lib/claude-desktop/resources/app.asar" "$asarRoot"
 
+    # The main-process bundle is code split into content-hashed chunks whose
+    # names rotate every release, so patch across the whole build directory and
+    # assert afterwards that each substitution landed exactly once. Quote style
+    # also varies with the minifier (1.26832.0 emits backticks where earlier
+    # releases emitted double quotes), hence ["\x60] instead of a literal quote,
+    # and the identifiers are captured rather than spelled out.
     FIRMWARE_CODE_PATH="${firmwareCodePath}" \
     VIRTIOFSD_PATH="$out/lib/claude-desktop/resources/virtiofsd" \
     perl -0pi -e '
-      s{([A-Za-z0-9_\$]+)=process\.arch==="arm64"\?\["/usr/share/AAVMF/AAVMF_CODE\.fd"\]:\["/usr/share/OVMF/OVMF_CODE_4M\.fd","/usr/share/OVMF/OVMF_CODE\.fd"\]}{$1=["$ENV{FIRMWARE_CODE_PATH}"]} or die "failed to patch firmware path\n";
-      s{([A-Za-z0-9_\$]+)=\["/usr/libexec/virtiofsd","/usr/bin/virtiofsd"\]}{$1=["$ENV{VIRTIOFSD_PATH}"]} or die "failed to patch virtiofsd path\n";
-      s{return A\.replace\("OVMF_CODE","OVMF_VARS"\)\.replace\("AAVMF_CODE","AAVMF_VARS"\)}{return A.replace("OVMF_CODE","OVMF_VARS").replace("AAVMF_CODE","AAVMF_VARS").replace("edk2-aarch64-code.fd","edk2-arm-vars.fd")} or die "failed to patch firmware vars path\n";
-    ' "$asarRoot/.vite/build/index.js"
+      $firmware += s{([A-Za-z0-9_\$]+)=process\.arch===["\x60]arm64["\x60]\?\[["\x60]/usr/share/AAVMF/AAVMF_CODE\.fd["\x60]\]:\[["\x60]/usr/share/OVMF/OVMF_CODE_4M\.fd["\x60],["\x60]/usr/share/OVMF/OVMF_CODE\.fd["\x60]\]}{$1=["$ENV{FIRMWARE_CODE_PATH}"]}g;
+      $virtiofsd += s{([A-Za-z0-9_\$]+)=\[["\x60]/usr/libexec/virtiofsd["\x60],["\x60]/usr/bin/virtiofsd["\x60]\]}{$1=["$ENV{VIRTIOFSD_PATH}"]}g;
+      $vars += s{return ([A-Za-z0-9_\$]+)\.replace\(["\x60]OVMF_CODE["\x60],["\x60]OVMF_VARS["\x60]\)\.replace\(["\x60]AAVMF_CODE["\x60],["\x60]AAVMF_VARS["\x60]\)}{return $1.replace("OVMF_CODE","OVMF_VARS").replace("AAVMF_CODE","AAVMF_VARS").replace("edk2-aarch64-code.fd","edk2-arm-vars.fd")}g;
+      END {
+        die "failed to patch firmware path (matched $firmware times, expected 1)\n" unless $firmware == 1;
+        die "failed to patch virtiofsd path (matched $virtiofsd times, expected 1)\n" unless $virtiofsd == 1;
+        die "failed to patch firmware vars path (matched $vars times, expected 1)\n" unless $vars == 1;
+      }
+    ' "$asarRoot"/.vite/build/*.js
 
     rm "$out/lib/claude-desktop/resources/app.asar"
     asar pack --unpack "*.node" "$asarRoot" "$out/lib/claude-desktop/resources/app.asar"
