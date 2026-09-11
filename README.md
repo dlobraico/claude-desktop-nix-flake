@@ -1,3 +1,7 @@
+# ARCHIVED
+
+I've switched to installing Claude Desktop via https://github.com/numtide/llm-agents.nix so I'm going to close this PR and archive my fork. 
+
 # Claude Desktop Nix Flake (Official Linux Beta)
 
 [![Update Claude Desktop](https://github.com/dlobraico/claude-desktop-nix-flake/actions/workflows/update.yml/badge.svg)](https://github.com/dlobraico/claude-desktop-nix-flake/actions/workflows/update.yml)
